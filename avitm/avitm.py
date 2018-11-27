@@ -1,7 +1,11 @@
 """Class to train AVITM models."""
 
 import os
+from collections import defaultdict
 import multiprocessing as mp
+import requests
+
+import numpy as np
 
 import torch
 from torch import optim
@@ -16,9 +20,9 @@ class AVITM(object):
     """Class to train AVITM model."""
 
     def __init__(self, input_size, n_components=10, model_type='prodLDA',
-                 hidden_sizes=(100,), activation='softplus', batch_size=64,
-                 lr=1e-3, momentum=0.99, solver='adam', num_epochs=100,
-                 reduce_on_plateau=True, weight_decay=0.0):
+                 hidden_sizes=(100,), activation='softplus', dropout=0.2,
+                 batch_size=64, lr=2e-3, momentum=0.99, solver='adam',
+                 num_epochs=100, reduce_on_plateau=False):
         """
         Initialize AVITM model.
 
@@ -28,13 +32,13 @@ class AVITM(object):
             model_type : string, 'prodLDA' or 'LDA' (default 'prodLDA')
             hidden_sizes : tuple, length = n_layers - 2, (default (100, ))
             activation : string, 'softplus', 'relu', (default 'softplus')
+            dropout : float, dropout to use (default 0.2)
             batch_size : int, size of batch to use for training (default 64)
-            lr : float, learning rate to use for training (default 1e-3)
+            lr : float, learning rate to use for training (default 2e-3)
             momentum : float, momentum to use for training (default 0.99)
             solver : string, optimizer 'adam' or 'sgd' (default 'adam')
             num_epochs : int, number of epochs to train for, (default 100)
-            reduce_on_plateau : bool, reduce learning rate by 10x on plateau of 10 epochs (default True)
-            weight_decay : float, weight decay parameter for optimizer, (default 0.0)
+            reduce_on_plateau : bool, reduce learning rate by 10x on plateau of 10 epochs (default False)
         """
         assert isinstance(input_size, int) and input_size > 0,\
             "input_size must by type int > 0."
@@ -46,58 +50,56 @@ class AVITM(object):
             "hidden_sizes must be type tuple."
         assert activation in ['softplus', 'relu'], \
             "activation must be 'softplus' or 'relu'."
+        assert dropout >= 0, "dropout must be >= 0."
         assert isinstance(batch_size, int) and batch_size > 0,\
             "batch_size must be int > 0."
-        assert isinstance(lr, float) and lr > 0, "lr must be float > 0."
+        assert lr > 0, "lr must be > 0."
         assert isinstance(momentum, float) and momentum > 0 and momentum <= 1,\
             "momentum must be 0 < float <= 1."
         assert solver in ['adam', 'sgd'], "solver must be 'adam' or 'sgd'."
         assert isinstance(reduce_on_plateau, bool),\
             "reduce_on_plateau must be type bool."
-        assert isinstance(weight_decay, float) and weight_decay >= 0,\
-            "weight_decay must be float >= 0."
 
         self.input_size = input_size
         self.n_components = n_components
         self.model_type = model_type
         self.hidden_sizes = hidden_sizes
         self.activation = activation
+        self.dropout = dropout
         self.batch_size = batch_size
         self.lr = lr
         self.momentum = momentum
         self.solver = solver
         self.num_epochs = num_epochs
         self.reduce_on_plateau = reduce_on_plateau
-        self.weight_decay = weight_decay
 
         # init inference avitm network
         self.model = DecoderNetwork(
-            input_size, n_components, model_type, hidden_sizes, activation)
+            input_size, n_components, model_type, hidden_sizes, activation,
+            dropout)
 
         # init optimizer
         if self.solver == 'adam':
             self.optimizer = optim.Adam(
-                self.model.parameters(), lr=lr, betas=(self.momentum, 0.99),
-                weight_decay=weight_decay)
+                self.model.parameters(), lr=lr, betas=(self.momentum, 0.99))
         elif self.solver == 'sgd':
             self.optimizer = optim.SGD(
-                self.model.parameters(), lr=lr, momentum=self.momentum,
-                weight_decay=weight_decay)
+                self.model.parameters(), lr=lr, momentum=self.momentum)
 
         # init lr scheduler
         if self.reduce_on_plateau:
             self.scheduler = ReduceLROnPlateau(self.optimizer, patience=10)
 
         # performance attributes
-        self.best_score = 0
-        self.best_loss = float('inf')
         self.best_loss_train = float('inf')
 
         # training atributes
         self.model_dir = None
         self.train_data = None
-        self.val_data = None
         self.nn_epoch = None
+
+        # learned topics
+        self.best_components = None
 
         # Use cuda if available
         if torch.cuda.is_available():
@@ -106,26 +108,21 @@ class AVITM(object):
             self.USE_CUDA = False
 
     def _loss(self, inputs, word_dists, prior_mean, prior_variance,
-              posterior_mean, posterior_variance):
+              posterior_mean, posterior_variance, posterior_log_variance):
 
         # KL term
-        prior_variance_det = prior_variance.cumprod(dim=0)[-1]
-        prior_variance_inv = 1 / prior_variance
-
-        posterior_variance_det = posterior_variance.cumprod(dim=1)[:, -1]
-
+        # var division term
+        var_division = torch.sum(posterior_variance / prior_variance, dim=1)
+        # diff means term
         diff_means = prior_mean - posterior_mean
-
-        # trace(\Sigma_1^-1 \Sigma_0)
-        tr_sigs = torch.sum(prior_variance_inv * posterior_variance, dim=1)
-        # (\mu_1 - \mu_0)^T \Sigm_1^-1 (\mu_1 - \mu_0)
-        mdiff_sig1inv_mdiff = torch.sum(
-            diff_means * prior_variance_inv * diff_means, dim=1)
-        # log |\Sigma_1| / |\Sigma_0|
-        sig_det_ratio = prior_variance_det / posterior_variance_det
-
-        KL = 0.5 * (tr_sigs + mdiff_sig1inv_mdiff - self.n_components
-                    + torch.log(sig_det_ratio + 1e-10))
+        diff_term = torch.sum(
+            (diff_means * diff_means) / prior_variance, dim=1)
+        # logvar det division term
+        logvar_det_division = \
+            prior_variance.log().sum() - posterior_log_variance.sum(dim=1)
+        # combine terms
+        KL = 0.5 * (
+            var_division + diff_term - self.n_components + logvar_det_division)
 
         # Reconstruction term
         RL = -torch.sum(inputs * torch.log(word_dists + 1e-10), dim=1)
@@ -150,12 +147,13 @@ class AVITM(object):
             # forward pass
             self.model.zero_grad()
             prior_mean, prior_variance, \
-                posterior_mean, posterior_variance, word_dists = self.model(X)
+                posterior_mean, posterior_variance, posterior_log_variance, \
+                word_dists = self.model(X)
 
             # backward pass
             loss = self._loss(
                 X, word_dists, prior_mean, prior_variance,
-                posterior_mean, posterior_variance)
+                posterior_mean, posterior_variance, posterior_log_variance)
             loss.backward()
             self.optimizer.step()
 
@@ -163,40 +161,11 @@ class AVITM(object):
             samples_processed += X.size()[0]
             train_loss += loss.item()
 
+        train_loss /= samples_processed
+
         return samples_processed, train_loss
 
-    def _eval_epoch(self, loader):
-        """Eval epoch."""
-        self.model.eval()
-        eval_loss = 0
-        samples_processed = 0
-
-        with torch.no_grad():
-            for batch_samples in loader:
-                # batch_size x vocab_size
-                X = batch_samples['X']
-
-                if self.USE_CUDA:
-                    X = X.cuda()
-
-                # forward pass
-                self.model.zero_grad()
-                prior_mean, prior_variance, \
-                    posterior_mean, posterior_variance, \
-                    word_dists = self.model(X)
-
-                # backward pass
-                loss = self._loss(
-                    X, word_dists, prior_mean, prior_variance,
-                    posterior_mean, posterior_variance)
-
-                # compute train loss
-                samples_processed += X.size()[0]
-                eval_loss += loss.item()
-
-        return samples_processed, eval_loss
-
-    def fit(self, train_dataset, val_dataset, save_dir):
+    def fit(self, train_dataset, save_dir=None):
         """
         Train the AVITM model.
 
@@ -213,25 +182,21 @@ class AVITM(object):
                Model Type: {}\n\
                Hidden Sizes: {}\n\
                Activation: {}\n\
+               Dropout: {}\n\
                Learning Rate: {}\n\
                Momentum: {}\n\
                Reduce On Plateau: {}\n\
-               Weight Decay: {}\n\
                Save Dir: {}".format(
                    self.n_components, 0.0,
                    1. - (1./self.n_components), self.model_type,
-                   self.hidden_sizes, self.activation, self.lr, self.momentum,
-                   self.reduce_on_plateau, self.weight_decay, save_dir))
+                   self.hidden_sizes, self.activation, self.dropout, self.lr,
+                   self.momentum, self.reduce_on_plateau, save_dir))
 
         self.model_dir = save_dir
         self.train_data = train_dataset
-        self.val_data = val_dataset
 
         train_loader = DataLoader(
             self.train_data, batch_size=self.batch_size, shuffle=True,
-            num_workers=mp.cpu_count())
-        val_loader = DataLoader(
-            self.val_data, batch_size=self.batch_size, shuffle=True,
             num_workers=mp.cpu_count())
 
         # init training variables
@@ -239,33 +204,24 @@ class AVITM(object):
         samples_processed = 0
 
         # train loop
-        for epoch in range(self.num_epochs + 1):
+        for epoch in range(self.num_epochs):
             self.nn_epoch = epoch
-            if epoch > 0:
-                # train epoch
-                sp, train_loss = self._train_epoch(train_loader)
-                samples_processed += sp
-
-            # eval epoch
-            _, val_loss = self._eval_epoch(val_loader)
-
-            # val_score = self.score(self.val_data)
-            val_score = 0
+            # train epoch
+            sp, train_loss = self._train_epoch(train_loader)
+            samples_processed += sp
 
             # report
-            print("Epoch: [{}/{}]\tSamples: [{}/{}]\tTrain Loss: {}\tValidation Loss: {}\tValidation Score: {}".format(
-                epoch, self.num_epochs, samples_processed,
-                len(self.train_data)*self.num_epochs, train_loss,
-                val_loss, val_score))
+            print("Epoch: [{}/{}]\tSamples: [{}/{}]\tTrain Loss: {}".format(
+                epoch+1, self.num_epochs, samples_processed,
+                len(self.train_data)*self.num_epochs, train_loss))
 
             # save best
-            if val_score > self.best_score:
-                self.best_score = val_score
-                self.best_loss = val_loss
-
+            if train_loss < self.best_loss_train:
                 self.best_loss_train = train_loss
+                self.best_components = self.model.beta.weight
 
-                self.save(save_dir)
+                if save_dir is not None:
+                    self.save(save_dir)
 
     def predict(self, dataset, k=10):
         """Predict input."""
@@ -298,24 +254,54 @@ class AVITM(object):
 
     def score(self, dataset, scorer='coherence', k=10):
         """Score model."""
-        preds = self.predict(dataset, k)
         if scorer == 'perplexity':
             # score = perplexity_score(truth, preds)
             raise NotImplementedError("Not implemented yet.")
         elif scorer == 'coherence':
-            # score = coherence_score(truth, preds)
-            raise NotImplementedError("Not implemented yet.")
+            score = self._get_coherence(k)
         else:
             raise ValueError("Unknown score type!")
 
         return score
 
+    def _get_coherence(self, k=10):
+        """Get coherence using palmetto web service."""
+        component_dists = self.best_components
+        base_url = 'http://palmetto.aksw.org/palmetto-webapp/service/cv?words='
+        scores = []
+        for i in range(self.n_components):
+            _, idxs = torch.topk(component_dists[:, i], k)
+            component_words = [self.train_data.idx2token[idx]
+                               for idx in idxs.cpu().numpy()]
+            url = base_url + '%20'.join(component_words)
+            score = float(requests.get(url).content)
+            print(score, flush=True)
+            scores += [score]
+        return np.mean(scores)
+
+    def get_topics(self, k=10):
+        """
+        Retrieve topic words.
+
+        Args
+            k : (int) number of words to return per topic, default 10.
+        """
+        assert k <= self.input_size, "k must be <= input size."
+        component_dists = self.best_components
+        topics = defaultdict(list)
+        for i in range(self.n_components):
+            _, idxs = torch.topk(component_dists[:, i], k)
+            component_words = [self.train_data.idx2token[idx]
+                               for idx in idxs.cpu().numpy()]
+            topics[i] = component_words
+        return topics
+
     def _format_file(self):
-        model_dir = "AVITM_nc_{}_tpm_{}_tpv_{}_hs_{}_ac_{}_lr_{}_mo_{}_rp_{}_wd_{}".\
+        model_dir = "AVITM_nc_{}_tpm_{}_tpv_{}_hs_{}_ac_{}_do_{}_lr_{}_mo_{}_rp_{}".\
             format(self.n_components, 0.0, 1 - (1./self.n_components),
                    self.model_type, self.hidden_sizes, self.activation,
-                   self.lr, self.momentum, self.reduce_on_plateau,
-                   self.weight_decay)
+                   self.dropout, self.lr, self.momentum,
+                   self.reduce_on_plateau)
         return model_dir
 
     def save(self, models_dir=None):

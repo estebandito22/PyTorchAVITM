@@ -1,25 +1,37 @@
 import os
-import numpy as np
+import json
 
-from sklearn.datasets import fetch_20newsgroups_vectorized
+import numpy as np
+import pandas as pd
 
 from avitm.avitm import AVITM
 from datasets.newsgroup import NewsGroupDataset
 
-newsgroups_train = fetch_20newsgroups_vectorized(subset='train')
-input = newsgroups_train.data[:,:1995].toarray()
-train_mask = np.random.rand(len(input)) < 0.8
-train = newsgroups_train.data[:,:1995].toarray()[train_mask]
-val = newsgroups_train.data[:,:1995].toarray()[~train_mask]
 
-avitm = AVITM(input_size=1995, n_components=10, model_type='prodLDA',
-              hidden_sizes=(100,), activation='softplus', batch_size=64,
-              lr=2e-3, momentum=0.99, solver='adam', num_epochs=50,
-              reduce_on_plateau=True, weight_decay=1e-5)
+def to_bow(data, min_length):
+    """Convert index lists to bag of words representation of documents."""
+    vect = [np.bincount(x[x != np.array(None)].astype('int'), minlength=min_length)
+            for x in data if np.sum(x[x != np.array(None)]) != 0]
+    return np.array(vect)
 
+cwd = os.getcwd()
+vocab_size = 1995
+vocab = os.path.join(cwd, 'data', 'vocab.pkl')
+vocab = json.load(open(vocab, 'r'))
+idx2token = {v: k for (k, v) in vocab.items()}
 
-train_data = NewsGroupDataset(train)
-val_data = NewsGroupDataset(val)
-avitm.fit(train_data, val_data, os.path.join(os.getcwd(), 'outputs'))
+train = np.load(os.path.join(cwd, 'data', 'train.txt.npy'), encoding='latin1')
+train_bow = to_bow(train, vocab_size)
+train_data = NewsGroupDataset(train_bow, idx2token)
 
-avitm.predict(val_data, 10)
+avitm = AVITM(input_size=1995, n_components=50, model_type='prodLDA',
+              hidden_sizes=(100,), activation='softplus', dropout=0.2,
+              batch_size=64, lr=2e-3, momentum=0.99, solver='adam',
+              num_epochs=100, reduce_on_plateau=False)
+
+avitm.fit(train_data, os.path.join(os.getcwd()))
+
+topics = pd.DataFrame(avitm.get_topics(10)).T
+topics
+
+avitm.score(10)

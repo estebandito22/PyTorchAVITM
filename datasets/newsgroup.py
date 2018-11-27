@@ -8,7 +8,7 @@ class NewsGroupDataset(Dataset):
 
     """Class to load 20 News Groups dataset."""
 
-    def __init__(self, X):
+    def __init__(self, X, idx2token):
         """
         Initialize NewsGroupDataset.
 
@@ -17,6 +17,7 @@ class NewsGroupDataset(Dataset):
                 Document word matrix.
         """
         self.X = X
+        self.idx2token = idx2token
 
     def __len__(self):
         """Return length of dataset."""
