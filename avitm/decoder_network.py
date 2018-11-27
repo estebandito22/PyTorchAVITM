@@ -61,8 +61,8 @@ class DecoderNetwork(nn.Module):
         if torch.cuda.is_available():
             self.prior_variance = self.prior_variance.cuda()
 
-        self.beta = nn.Linear(n_components, input_size, bias=False)
-        nn.init.xavier_uniform_(self.beta.weight)
+        self.beta = nn.Parameter(torch.Tensor(n_components, input_size))
+        nn.init.xavier_uniform_(self.beta)
         self.beta_batchnorm = nn.BatchNorm1d(input_size, affine=False)
 
         # dropout on theta
@@ -89,13 +89,13 @@ class DecoderNetwork(nn.Module):
         # prodLDA vs LDA
         if self.model_type == 'prodLDA':
             # in: batch_size x input_size x n_components
-            word_dist = F.softmax(self.beta_batchnorm(self.beta(theta)), dim=1)
+            word_dist = F.softmax(
+                self.beta_batchnorm(torch.matmul(theta, self.beta)), dim=1)
             # word_dist: batch_size x input_size
         elif self.model_type == 'LDA':
             # simplex constrain on Beta
-            self.beta.weight.data = F.softmax(
-                self.beta_batchnorm(self.beta.weight.data.t()).t(), dim=0)
-            word_dist = self.beta(theta)
+            beta = F.softmax(self.beta_batchnorm(self.beta), dim=1)
+            word_dist = torch.matmul(theta, beta)
             # word_dist: batch_size x input_size
 
         return self.prior_mean, self.prior_variance, \

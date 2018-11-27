@@ -218,7 +218,7 @@ class AVITM(object):
             # save best
             if train_loss < self.best_loss_train:
                 self.best_loss_train = train_loss
-                self.best_components = self.model.beta.weight
+                self.best_components = self.model.beta
 
                 if save_dir is not None:
                     self.save(save_dir)
@@ -252,31 +252,37 @@ class AVITM(object):
 
         return preds
 
-    def score(self, dataset, scorer='coherence', k=10):
+    def score(self, dataset, scorer='coherence', k=10, topics=5):
         """Score model."""
         if scorer == 'perplexity':
             # score = perplexity_score(truth, preds)
             raise NotImplementedError("Not implemented yet.")
         elif scorer == 'coherence':
-            score = self._get_coherence(k)
+            score = self._get_coherence(k, topics=5)
         else:
             raise ValueError("Unknown score type!")
 
         return score
 
-    def _get_coherence(self, k=10):
+    def _get_coherence(self, k=10, topics=5):
         """Get coherence using palmetto web service."""
         component_dists = self.best_components
         base_url = 'http://palmetto.aksw.org/palmetto-webapp/service/cv?words='
         scores = []
-        for i in range(self.n_components):
-            _, idxs = torch.topk(component_dists[:, i], k)
+        i = 0
+        while i < topics:
+            t = np.random.randint(0, self.n_components)
+            _, idxs = torch.topk(component_dists[t], k)
             component_words = [self.train_data.idx2token[idx]
                                for idx in idxs.cpu().numpy()]
             url = base_url + '%20'.join(component_words)
-            score = float(requests.get(url).content)
-            print(score, flush=True)
-            scores += [score]
+            try:
+                score = float(requests.get(url, timeout=300).content)
+                scores += [score]
+                i += 1
+            except requests.exceptions.Timeout:
+                print("Attempted scoring timed out.  Trying again.")
+                continue
         return np.mean(scores)
 
     def get_topics(self, k=10):
@@ -290,7 +296,7 @@ class AVITM(object):
         component_dists = self.best_components
         topics = defaultdict(list)
         for i in range(self.n_components):
-            _, idxs = torch.topk(component_dists[:, i], k)
+            _, idxs = torch.topk(component_dists[i], k)
             component_words = [self.train_data.idx2token[idx]
                                for idx in idxs.cpu().numpy()]
             topics[i] = component_words

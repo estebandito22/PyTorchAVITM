@@ -14,6 +14,7 @@ def to_bow(data, min_length):
             for x in data if np.sum(x[x != np.array(None)]) != 0]
     return np.array(vect)
 
+
 cwd = os.getcwd()
 vocab_size = 1995
 vocab = os.path.join(cwd, 'data', 'vocab.pkl')
@@ -29,7 +30,7 @@ avitm = AVITM(input_size=1995, n_components=50, model_type='prodLDA',
               batch_size=64, lr=2e-3, momentum=0.99, solver='adam',
               num_epochs=100, reduce_on_plateau=False)
 
-avitm.fit(train_data, os.path.join(os.getcwd()))
+avitm.fit(train_data)
 
 topics = pd.DataFrame(avitm.get_topics(10)).T
 topics
