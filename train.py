@@ -26,9 +26,9 @@ train_bow = to_bow(train, vocab_size)
 train_data = NewsGroupDataset(train_bow, idx2token)
 
 avitm = AVITM(input_size=1995, n_components=50, model_type='prodLDA',
-              hidden_sizes=(100,), activation='softplus', dropout=0.2,
-              batch_size=64, lr=2e-3, momentum=0.99, solver='adam',
-              num_epochs=100, reduce_on_plateau=False)
+              hidden_sizes=(100, 100), activation='softplus', dropout=0.2,
+              learn_priors=False, batch_size=64, lr=2e-3, momentum=0.99,
+              solver='adam', num_epochs=100, reduce_on_plateau=False)
 
 avitm.fit(train_data)
 
