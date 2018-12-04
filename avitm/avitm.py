@@ -20,9 +20,9 @@ class AVITM(object):
     """Class to train AVITM model."""
 
     def __init__(self, input_size, n_components=10, model_type='prodLDA',
-                 hidden_sizes=(100,), activation='softplus', dropout=0.2,
-                 batch_size=64, lr=2e-3, momentum=0.99, solver='adam',
-                 num_epochs=100, reduce_on_plateau=False):
+                 hidden_sizes=(100, 100), activation='softplus', dropout=0.2,
+                 learn_priors=True, batch_size=64, lr=2e-3, momentum=0.99,
+                 solver='adam', num_epochs=100, reduce_on_plateau=False):
         """
         Initialize AVITM model.
 
@@ -30,9 +30,10 @@ class AVITM(object):
             input_size : int, dimension of input
             n_components : int, number of topic components, (default 10)
             model_type : string, 'prodLDA' or 'LDA' (default 'prodLDA')
-            hidden_sizes : tuple, length = n_layers - 2, (default (100, ))
+            hidden_sizes : tuple, length = n_layers, (default (100, 100))
             activation : string, 'softplus', 'relu', (default 'softplus')
             dropout : float, dropout to use (default 0.2)
+            learn_priors : bool, make priors a learnable parameter (default True)
             batch_size : int, size of batch to use for training (default 64)
             lr : float, learning rate to use for training (default 2e-3)
             momentum : float, momentum to use for training (default 0.99)
@@ -51,6 +52,7 @@ class AVITM(object):
         assert activation in ['softplus', 'relu'], \
             "activation must be 'softplus' or 'relu'."
         assert dropout >= 0, "dropout must be >= 0."
+        assert isinstance(learn_priors, bool), "learn_priors must be boolean."
         assert isinstance(batch_size, int) and batch_size > 0,\
             "batch_size must be int > 0."
         assert lr > 0, "lr must be > 0."
@@ -66,6 +68,7 @@ class AVITM(object):
         self.hidden_sizes = hidden_sizes
         self.activation = activation
         self.dropout = dropout
+        self.learn_priors = learn_priors
         self.batch_size = batch_size
         self.lr = lr
         self.momentum = momentum
@@ -76,7 +79,7 @@ class AVITM(object):
         # init inference avitm network
         self.model = DecoderNetwork(
             input_size, n_components, model_type, hidden_sizes, activation,
-            dropout)
+            dropout, learn_priors)
 
         # init optimizer
         if self.solver == 'adam':
@@ -183,14 +186,15 @@ class AVITM(object):
                Hidden Sizes: {}\n\
                Activation: {}\n\
                Dropout: {}\n\
+               Learn Priors: {}\n\
                Learning Rate: {}\n\
                Momentum: {}\n\
                Reduce On Plateau: {}\n\
                Save Dir: {}".format(
                    self.n_components, 0.0,
                    1. - (1./self.n_components), self.model_type,
-                   self.hidden_sizes, self.activation, self.dropout, self.lr,
-                   self.momentum, self.reduce_on_plateau, save_dir))
+                   self.hidden_sizes, self.activation, self.dropout, self.learn_priors,
+                   self.lr, self.momentum, self.reduce_on_plateau, save_dir))
 
         self.model_dir = save_dir
         self.train_data = train_dataset

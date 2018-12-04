@@ -11,7 +11,8 @@ class DecoderNetwork(nn.Module):
     """AVITM Network."""
 
     def __init__(self, input_size, n_components=10, model_type='prodLDA',
-                 hidden_sizes=(100,), activation='softplus', dropout=0.2):
+                 hidden_sizes=(100,100), activation='softplus', dropout=0.2,
+                 learn_priors=True):
         """
         Initialize InferenceNetwork.
 
@@ -19,8 +20,9 @@ class DecoderNetwork(nn.Module):
             input_size : int, dimension of input
             n_components : int, number of topic components, (default 10)
             model_type : string, 'prodLDA' or 'LDA' (default 'prodLDA')
-            hidden_sizes : tuple, length = n_layers - 2, (default (100, ))
+            hidden_sizes : tuple, length = n_layers, (default (100, 100))
             activation : string, 'softplus', 'relu', (default 'softplus')
+            learn_priors : bool, make priors learnable parameter
         """
         super(DecoderNetwork, self).__init__()
         assert isinstance(input_size, int), "input_size must by type int."
@@ -40,6 +42,7 @@ class DecoderNetwork(nn.Module):
         self.hidden_sizes = hidden_sizes
         self.activation = activation
         self.dropout = dropout
+        self.learn_priors = learn_priors
 
         self.inf_net = InferenceNetwork(
             input_size, n_components, hidden_sizes, activation)
@@ -48,16 +51,20 @@ class DecoderNetwork(nn.Module):
         # \mu_1k = log \alpha_k + 1/K \sum_i log \alpha_i;
         # \alpha = 1 \forall \alpha
         topic_prior_mean = 0.0
-        self.prior_mean = nn.Parameter(torch.tensor(
-            [topic_prior_mean] * n_components))
+        self.prior_mean = torch.tensor(
+            [topic_prior_mean] * n_components)
+        if self.learn_priors:
+            self.prior_mean = nn.Parameter(self.prior_mean)
         if torch.cuda.is_available():
             self.prior_mean = self.prior_mean.cuda()
 
         # \Sigma_1kk = 1 / \alpha_k (1 - 2/K) + 1/K^2 \sum_i 1 / \alpha_k;
         # \alpha = 1 \forall \alpha
         topic_prior_variance = 1. - (1. / self.n_components)
-        self.prior_variance = nn.Parameter(torch.tensor(
-            [topic_prior_variance] * n_components))
+        self.prior_variance = torch.tensor(
+            [topic_prior_variance] * n_components)
+        if self.learn_priors:
+            self.prior_variance = nn.Parameter(self.prior_variance)
         if torch.cuda.is_available():
             self.prior_variance = self.prior_variance.cuda()
 

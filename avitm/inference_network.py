@@ -17,7 +17,7 @@ class InferenceNetwork(nn.Module):
         Args
             input_size : int, dimension of input
             output_size : int, dimension of output
-            hidden_sizes : tuple, length = n_layers - 2
+            hidden_sizes : tuple, length = n_layers
             activation : string, 'softplus' or 'relu', default 'softplus'
             dropout : float, default 0.2, default 0.2
         """
@@ -41,21 +41,24 @@ class InferenceNetwork(nn.Module):
             self.activation = nn.ReLU()
 
         self.input_layer = nn.Linear(input_size, hidden_sizes[0])
+
         self.hiddens = nn.Sequential(OrderedDict([
-            ('l_{}'.format(i // 2), nn.Linear(h_in, h_out)) if i % 2 == 0 else
-            ('a_{}'.format(i // 2), self.activation) for i, (h_in, h_out) in
-            enumerate(zip(hidden_sizes[:-1], hidden_sizes[1:]))]))
+            ('l_{}'.format(i // 2), nn.Sequential(nn.Linear(h_in, h_out), self.activation))
+            for i, (h_in, h_out) in enumerate(zip(hidden_sizes[:-1], hidden_sizes[1:]))]))
+
         self.f_mu = nn.Linear(hidden_sizes[-1], output_size)
         self.f_mu_batchnorm = nn.BatchNorm1d(output_size, affine=False)
+
         self.f_sigma = nn.Linear(hidden_sizes[-1], output_size)
         self.f_sigma_batchnorm = nn.BatchNorm1d(output_size, affine=False)
+
         self.dropout_enc = nn.Dropout(p=self.dropout)
 
     def forward(self, x):
         """Forward pass."""
         x = self.input_layer(x)
         x = self.activation(x)
-        x = self.hiddens(x)
+        # x = self.hiddens(x)
         x = self.dropout_enc(x)
         mu = self.f_mu_batchnorm(self.f_mu(x))
         log_sigma = self.f_sigma_batchnorm(self.f_sigma(x))
