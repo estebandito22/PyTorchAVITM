@@ -256,7 +256,7 @@ class AVITM(object):
 
         return preds
 
-    def score(self, dataset, scorer='coherence', k=10, topics=5):
+    def score(self, scorer='coherence', k=10, topics=5):
         """Score model."""
         if scorer == 'perplexity':
             # score = perplexity_score(truth, preds)
