@@ -58,7 +58,7 @@ class InferenceNetwork(nn.Module):
         """Forward pass."""
         x = self.input_layer(x)
         x = self.activation(x)
-        # x = self.hiddens(x)
+        x = self.hiddens(x)
         x = self.dropout_enc(x)
         mu = self.f_mu_batchnorm(self.f_mu(x))
         log_sigma = self.f_sigma_batchnorm(self.f_sigma(x))
