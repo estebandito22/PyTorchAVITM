@@ -1,12 +1,12 @@
-"""Class for loading NMT dataset."""
+"""Class for loading BOW dataset."""
 
 import torch
 from torch.utils.data import Dataset
 
 
-class NewsGroupDataset(Dataset):
+class BOWDataset(Dataset):
 
-    """Class to load 20 News Groups dataset."""
+    """Class to load BOW dataset."""
 
     def __init__(self, X, idx2token):
         """

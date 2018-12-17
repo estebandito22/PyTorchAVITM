@@ -110,6 +110,9 @@ class AVITM(object):
         else:
             self.USE_CUDA = False
 
+        if self.USE_CUDA:
+            self.model = self.model.cuda()
+
     def _loss(self, inputs, word_dists, prior_mean, prior_variance,
               posterior_mean, posterior_variance, posterior_log_variance):
 

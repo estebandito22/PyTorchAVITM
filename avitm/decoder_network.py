@@ -53,23 +53,27 @@ class DecoderNetwork(nn.Module):
         topic_prior_mean = 0.0
         self.prior_mean = torch.tensor(
             [topic_prior_mean] * n_components)
-        if self.learn_priors:
-            self.prior_mean = nn.Parameter(self.prior_mean)
         if torch.cuda.is_available():
             self.prior_mean = self.prior_mean.cuda()
+        if self.learn_priors:
+            self.prior_mean = nn.Parameter(self.prior_mean)
 
         # \Sigma_1kk = 1 / \alpha_k (1 - 2/K) + 1/K^2 \sum_i 1 / \alpha_k;
         # \alpha = 1 \forall \alpha
         topic_prior_variance = 1. - (1. / self.n_components)
         self.prior_variance = torch.tensor(
             [topic_prior_variance] * n_components)
-        if self.learn_priors:
-            self.prior_variance = nn.Parameter(self.prior_variance)
         if torch.cuda.is_available():
             self.prior_variance = self.prior_variance.cuda()
+        if self.learn_priors:
+            self.prior_variance = nn.Parameter(self.prior_variance)
 
-        self.beta = nn.Parameter(torch.Tensor(n_components, input_size))
+        self.beta = torch.Tensor(n_components, input_size)
+        if torch.cuda.is_available():
+            self.beta = self.beta.cuda()
+        self.beta = nn.Parameter(self.beta)
         nn.init.xavier_uniform_(self.beta)
+
         self.beta_batchnorm = nn.BatchNorm1d(input_size, affine=False)
 
         # dropout on theta
