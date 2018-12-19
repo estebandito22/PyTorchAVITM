@@ -4,7 +4,7 @@ PyTorch Implementation of Autoencoding Variational Inference for Topic Models (S
 
 # Why PyTorchAVITM
 
-The goal of the PyTorchAVITM framework is to provide a intuitive and flexible implementation of the AVITM model developed by Srivastava and Sutton 2017.  This builds upon previous implementations in several key components of the inference network archtecture such as greater flexibility in the depth of the inference network, the regularization (dropout) to be used and the ability to learn the prior parameters.  We also provide a clean, high level API to control these decisions and easitly experiment with a larger hypthesis space of models.
+The goal of the PyTorchAVITM framework is to provide a intuitive and flexible implementation of the AVITM model developed by Srivastava and Sutton 2017.  This builds upon previous implementations in several key components of the inference network archtecture such as greater flexibility in the depth of the inference network, the regularization (dropout) to be used, a choice of activation function and the ability to learn the prior parameters.  We also allow robust control of the optimization procedure.  The framework provides a clean, high level API to control these decisions and easitly experiment with a larger hypthesis space of models.
 
 # Hyper-Parameters
 
