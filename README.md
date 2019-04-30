@@ -27,3 +27,17 @@ The goal of the PyTorchAVITM framework is to provide a intuitive and flexible im
 ![Alt text](/call_signature.png?raw=true)
 
 The example above shows the typical usage of the PyTorch AVITM framework.  We define the input data as a PyTorch Dataset class that includes the mapping between token indexes and tokens in our vocabulary.  Next, we instantiate an AVITM model with the desired hyper-parameter settings.  Calling fit on the instantiated model will train the inference network which can subsequently be scored using the Palmetto Project scoring server.  We can also return the topics learned by the model.
+
+# Citation
+
+Please cite this work if you use it.
+
+```
+@MISC {Carrow2018,
+    author       = "Stephen Carrow",
+    title        = "PyTorchAVITM: Open Source AVITM Implementation in PyTorch",
+    howpublished = "Github",
+    month        = "dec",
+    year         = "2018"
+}
+```
