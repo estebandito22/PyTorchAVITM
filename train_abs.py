@@ -35,9 +35,9 @@ input_size = len(idx2token)
 
 train_data = BOWDataset(train_bow, idx2token)
 
-avitm = AVITM(input_size=input_size, n_components=50, model_type='LDA',
+avitm = AVITM(input_size=input_size, n_components=50, model_type='prodLDA',
               hidden_sizes=(100, 100), activation='softplus', dropout=0.2,
-              learn_priors=False, batch_size=64, lr=2e-3, momentum=0.99,
+              learn_priors=True, batch_size=64, lr=2e-3, momentum=0.99,
               solver='adam', num_epochs=100, reduce_on_plateau=False)
 
 avitm.fit(train_data)
@@ -51,4 +51,4 @@ avitm.score(k=10, topics=10)
 # w/o learned priors, prodLDA, 2layer, 0.447
 # w/  learned priors, prodLDA, 2layer, 0.436
 # w/  learned priors, prodLDA, 1layer, 0.458
-# w/o learned priors, LDA, 2layer 0.
+# w/o learned priors, LDA, 2layer 0.433

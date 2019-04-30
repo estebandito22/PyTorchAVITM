@@ -6,6 +6,7 @@ import multiprocessing as mp
 import requests
 
 import numpy as np
+import datetime
 
 import torch
 from torch import optim
@@ -214,13 +215,15 @@ class AVITM(object):
         for epoch in range(self.num_epochs):
             self.nn_epoch = epoch
             # train epoch
+            s = datetime.datetime.now()
             sp, train_loss = self._train_epoch(train_loader)
             samples_processed += sp
+            e = datetime.datetime.now()
 
             # report
-            print("Epoch: [{}/{}]\tSamples: [{}/{}]\tTrain Loss: {}".format(
+            print("Epoch: [{}/{}]\tSamples: [{}/{}]\tTrain Loss: {}\tTime: {}".format(
                 epoch+1, self.num_epochs, samples_processed,
-                len(self.train_data)*self.num_epochs, train_loss))
+                len(self.train_data)*self.num_epochs, train_loss, e - s))
 
             # save best
             if train_loss < self.best_loss_train:
