@@ -4,8 +4,8 @@ import json
 import numpy as np
 import pandas as pd
 
-from avitm.avitm import AVITM
-from datasets.bow import BOWDataset
+from pytorchavitm import AVITM
+from pytorchavitm.datasets import BOWDataset
 
 
 def to_bow(data, min_length):

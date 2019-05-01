@@ -7,8 +7,8 @@ import pandas as pd
 
 from sklearn.feature_extraction.text import CountVectorizer
 
-from avitm.avitm import AVITM
-from datasets.bow import BOWDataset
+from pytorchavitm import AVITM
+from pytorchavitm.datasets import BOWDataset
 
 
 cwd = os.getcwd()
