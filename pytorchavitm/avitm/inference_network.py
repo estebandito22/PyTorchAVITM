@@ -43,7 +43,7 @@ class InferenceNetwork(nn.Module):
         self.input_layer = nn.Linear(input_size, hidden_sizes[0])
 
         self.hiddens = nn.Sequential(OrderedDict([
-            ('l_{}'.format(i // 2), nn.Sequential(nn.Linear(h_in, h_out), self.activation))
+            ('l_{}'.format(i), nn.Sequential(nn.Linear(h_in, h_out), self.activation))
             for i, (h_in, h_out) in enumerate(zip(hidden_sizes[:-1], hidden_sizes[1:]))]))
 
         self.f_mu = nn.Linear(hidden_sizes[-1], output_size)
